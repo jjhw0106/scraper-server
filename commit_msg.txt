@@ -1,0 +1,6 @@
+feat(scraper): 스크래핑 엔진 구축 및 다중 플랫폼(잡코리아, 원티드) 지원
+
+- NestJS + Playwright 기반 스크래핑 환경 구축
+- 플랫폼별 분기 로직(executeScraping) 구현
+- 원티드(Wanted) 플랫폼 초기 연동 및 타이틀 수집 로직 추가
+- CORS 설정 및 포트(4000) 구성으로 프론트엔드 연동 준비
