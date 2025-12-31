@@ -3,10 +3,10 @@ import { ScraperService } from './scraper.service';
 
 @Controller('scraper')
 export class ScraperController {
-  constructor(private readonly scraperService: ScraperService) {}
+  constructor(private readonly scraperService: ScraperService) { }
 
   @Post(':platform')
-  scrape(@Param('platform') platform: string) {
-    return this.scraperService.scrapePlatform(platform);
+  scrape(@Param('platform') platform: string, @Body() body: { id: string; pw: string }) {
+    return this.scraperService.scrapePlatform(platform, body);
   }
 }

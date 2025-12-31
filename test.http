@@ -1,0 +1,7 @@
+### Scrape JobKorea (Requires Manual Login)
+POST http://localhost:4000/scraper/jobkorea
+Content-Type: application/json
+
+### Scrape Wanted
+POST http://localhost:4000/scraper/wanted
+Content-Type: application/json
