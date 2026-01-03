@@ -1,0 +1,11 @@
+feat(scraper): MongoDB 연동 및 데이터 저장 로직 구현
+
+- MongoDB 연동 및 스키마 정의:
+  - `@nestjs/mongoose` 설정 및 MongooseModule 연결
+  - `ApplyHistory` 스키마 설계 (userId, platform, company 등) 및 등록
+  - `.env` 파일 위치 조정 (src/ -> root) 및 ConfigModule 설정 최적화
+- 데이터 저장 및 테스트:
+  - 스크래퍼 로직에 DB 저장 기능 통합을 위한 기반 마련
+  - `scraper.service.spec.ts` 통합 테스트 작성 (실제 DB 연동 검증)
+- 기타 설정:
+  - `package.json`: 윈도우 환경에서 포트 충돌 방지를 위한 `prestart` 스크립트 추가 (taskkill)

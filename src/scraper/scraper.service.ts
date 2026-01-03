@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { CreateScraperDto } from './dto/create-scraper.dto';
 import { chromium, Browser, Page } from 'playwright';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { ApplyHistory } from './schemas/apply-history.schema';
 
 @Injectable()
 export class ScraperService {
+
+  constructor(
+    @InjectModel(ApplyHistory.name) private applicationModel: Model<ApplyHistory>,
+  ) { }
 
   // credentials 객체 추가 (id, password)
   async scrapePlatform(platform: string, credentials?: { id: string; pw: string }) {
@@ -183,6 +190,13 @@ export class ScraperService {
     }
 
     console.log(`Total extraction complete. Found ${allApplications.length} items across ${currentPage} pages.`);
+
+    const savedData = await this.applicationModel.insertMany(
+      allApplications.map(app => ({
+        ...app,
+        userId: 'test'
+      }))
+    );
 
     return {
       message: 'Scraping completed',
