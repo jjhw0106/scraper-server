@@ -12,27 +12,32 @@ export class ScraperService {
     @InjectModel(ApplyHistory.name) private applicationModel: Model<ApplyHistory>,
   ) { }
 
-  // credentials 객체 추가 (id, password)
-  async scrapePlatform(platform: string, credentials?: { id: string; pw: string }) {
+  // 1. 메인 진입점: 스크래핑 실행 후 저장 로직 호출
+  async scrapePlatform(platform: string, credentials?: { id: string; pw: string }, userId: string = 'test') {
     let browser: Browser | null = null;
     try {
       // headless: false -> 브라우저 동작 과정을 눈으로 확인 (디버깅용)
       browser = await chromium.launch({ headless: false });
       const page = await browser.newPage();
 
-      const result = await this.executeScraping(platform, page, credentials);
+      // 1-1. 스크래핑 실행 (각 플랫폼별 로직 수행 및 데이터 반환)
+      const rawData = await this.executeScraping(platform, page, credentials);
+
+      // 1-2. 데이터 저장 (배열일 경우에만 처리)
+      let savedCount = 0;
+      if (Array.isArray(rawData)) {
+        savedCount = await this.saveScrapedData(userId, platform, rawData);
+      }
 
       return {
         success: true,
         platform,
-        data: result,
+        savedCount,
         timestamp: new Date().toISOString()
       };
 
     } catch (error) {
       console.error(`Scraping failed for ${platform}:`, error);
-      // 스크린샷 저장 (에러 발생 시점 디버깅용)
-      // if (page) await page.screenshot({ path: `error_${platform}.png` });
 
       return {
         success: false,
@@ -48,6 +53,7 @@ export class ScraperService {
     }
   }
 
+  // 2. 플랫폼별 분기 처리 (userId 제거됨 - 순수 스크래핑만 담당)
   private async executeScraping(platform: string, page: Page, credentials?: { id: string; pw: string }) {
     switch (platform) {
       case 'wanted':
@@ -59,10 +65,32 @@ export class ScraperService {
     }
   }
 
+  // 3. 데이터 저장 전용 메서드 (DB Persistence)
+  private async saveScrapedData(userId: string, platform: string, data: any[]) {
+    const docsToSave = data.map(item => ({
+      userId,
+      platform,
+      company: item.company,
+      position: item.position,
+      status: item.status,
+      // 날짜 필드 매핑 (date -> appliedAt)
+      appliedAt: item.date || item.appliedAt || new Date().toISOString()
+    }));
+
+    if (docsToSave.length > 0) {
+      // 추후 중복 방지 로직(upsert) 등을 여기에 추가 가능
+      const result = await this.applicationModel.insertMany(docsToSave);
+      console.log(`[${platform}] Saved ${result.length} items for user: ${userId}`);
+      return result.length;
+    }
+    return 0;
+  }
+
+  // --- 플랫폼별 상세 구현 ---
+
   private async scrapeWanted(page: Page, credentials?: { id: string; pw: string }) {
     console.log('Navigating to Wanted...');
     await page.goto('https://www.wanted.co.kr');
-    // 원티드는 소셜 로그인이 많아서 복잡할 수 있음. 추후 구현.
     return {
       siteTitle: await page.title(),
       message: '원티드 자동 로그인 기능은 아직 구현되지 않았습니다.'
@@ -83,7 +111,7 @@ export class ScraperService {
       console.log('Clicking login button...');
       await page.press('#M_PWD', 'Enter');
 
-      // 로그인 결과 확인 (잠시 대기 후 URL 체크)
+      // 로그인 결과 확인
       await page.waitForTimeout(3000);
       if (page.url().includes('Login_Tot.asp')) {
         const errorMsg = await page.locator('.error_msg').textContent().catch(() => null);
@@ -94,7 +122,6 @@ export class ScraperService {
       // --- 수동 로그인 모드 ---
       console.log('Manual login mode: Waiting for user to log in manually...');
       try {
-        // 로그인 페이지를 벗어날 때까지 대기 (최대 2분)
         await page.waitForURL((url) => !url.href.includes('Login_Tot.asp'), { timeout: 120000 });
         console.log('Login detected!');
       } catch (e) {
@@ -108,23 +135,17 @@ export class ScraperService {
     await page.goto('https://www.jobkorea.co.kr/User/ApplyMng');
     await page.waitForLoadState('domcontentloaded');
 
-    // [강력한 팝업 및 백드롭 제거]
-    // await this.removePopups(page);
-
-    // 팝업이 뜰 경우를 대비해 닫기 시도 (Legacy)
+    // 팝업 제거 시도 (Legacy)
     try {
-      console.log('Attempting to close popups (Legacy method)...');
-      await page.keyboard.press('Escape'); // ESC 키로 닫기 시도
+      await page.keyboard.press('Escape');
       const closeBtn = await page.$('.btn_close_layer, .btn_close_popup, .btnClose');
       if (closeBtn && await closeBtn.isVisible()) {
         await closeBtn.click();
-        console.log('Popup closed via button click.');
       }
     } catch (e) {
-      console.log('No popup or failed to close:', e);
+      // console.log('No popup or failed to close:', e);
     }
 
-    // 페이지가 안정될 때까지 잠시 대기
     await page.waitForTimeout(2000);
 
     // 6. 데이터 크롤링 (페이지네이션 적용)
@@ -136,15 +157,11 @@ export class ScraperService {
     while (currentPage <= MAX_PAGES) {
       console.log(`Scraping page ${currentPage}...`);
 
-      // 매 페이지마다 팝업/방해 요소 제거 시도
-      // await this.removePopups(page);
-
       const pageData = await page.evaluate(() => {
         const items: any[] = [];
         const rows = document.querySelectorAll('tbody tr');
 
         rows.forEach(row => {
-          // 추천 공고(광고) 행 제외
           if (row.textContent?.includes('유사한 추천공고')) return;
 
           const company = row.querySelector('.company a')?.textContent?.trim();
@@ -154,7 +171,6 @@ export class ScraperService {
           let status = row.querySelector('.apply-progress .status')?.textContent?.trim();
           if (!status) status = row.querySelector('.apply-status .status')?.textContent?.trim();
 
-          // 유효한 지원 내역인지 검증 (회사명, 공고명, 상태값이 모두 있어야 함)
           if (company && position && status) {
             items.push({
               company,
@@ -177,11 +193,9 @@ export class ScraperService {
       const nextPageBtn = await page.getByRole('link', { name: `${nextPageNum}`, exact: true }).first();
 
       if (await nextPageBtn.isVisible()) {
-        // 클릭 전 한 번 더 확실하게 제거
-        // await this.removePopups(page);
         await nextPageBtn.click();
         await page.waitForLoadState('domcontentloaded');
-        await page.waitForTimeout(1000); // 렌더링 대기
+        await page.waitForTimeout(1000);
         currentPage++;
       } else {
         console.log('No more pages found.');
@@ -191,40 +205,7 @@ export class ScraperService {
 
     console.log(`Total extraction complete. Found ${allApplications.length} items across ${currentPage} pages.`);
 
-    const savedData = await this.applicationModel.insertMany(
-      allApplications.map(app => ({
-        ...app,
-        userId: 'test'
-      }))
-    );
-
-    return {
-      message: 'Scraping completed',
-      count: allApplications.length,
-      data: allApplications
-    };
+    // 저장 로직은 제거됨. 순수 데이터만 리턴.
+    return allApplications;
   }
-
-  // 팝업 및 방해 요소 제거 헬퍼 메서드
-  private async removePopups(page: Page) {
-    await page.evaluate(() => {
-      try {
-        const overlays = document.querySelectorAll('.popup_layer, .layer_wrap, .modal, .tip_layer, .mtuLayer, .mtuLayerWrap, .dim, .dimmed, .mask, .backdrop, .blockUI, .ui-widget-overlay');
-        overlays.forEach(el => el.remove());
-
-        document.body.style.overflow = 'auto';
-        document.body.style.position = 'static';
-        document.documentElement.style.overflow = 'auto';
-        // console.log('Cleaned up ' + overlays.length + ' blocking elements.');
-      } catch (e) {
-        // console.log('Overlay removal error:', e);
-      }
-    });
-  }
-
-  // ... CRUD 메서드 (생략)
-  create(createScraperDto: CreateScraperDto) { return 'action'; }
-  findAll() { return 'action'; }
-  findOne(id: number) { return 'action'; }
-  remove(id: number) { return 'action'; }
 }

@@ -9,7 +9,7 @@ describe('AppController', () => {
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
       providers: [AppService],
-    }).compile();
+    }).compile(); 1
 
     appController = app.get<AppController>(AppController);
   });

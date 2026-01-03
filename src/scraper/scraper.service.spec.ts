@@ -48,11 +48,10 @@ describe('ScraperService (Database Integration Test)', () => {
       appliedAt: '2026.01.03',
     };
 
-    // 1. 기존 테스트 데이터 삭제 (멱등성 확보)
+    // 1. 기존 테스트 데이터 삭제
     await applyHistoryModel.deleteMany({ userId: testUserId });
 
     // 2. 저장 테스트 (ScraperService의 모델을 직접 사용하여 저장 시도)
-    // service['applyHistoryModel'] 처럼 접근하여 private 멤버를 우회하여 테스트할 수 있습니다.
     const created = await applyHistoryModel.create(dummyData);
     expect(created._id).toBeDefined();
     expect(created.company).toBe(dummyData.company);
