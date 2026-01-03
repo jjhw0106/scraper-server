@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param } from '@nestjs/common';
+import { Controller, Post, Body, Param, Get } from '@nestjs/common';
 import { ScraperService } from './scraper.service';
 
 @Controller('scraper')
@@ -6,8 +6,13 @@ export class ScraperController {
   constructor(private readonly scraperService: ScraperService) { }
 
   @Post(':platform')
-  scrape(@Param('platform') platform: string, @Body() body: { id: string; pw: string; userId?: string }) {
-    const userId = body.userId || 'unknown_user';
-    return this.scraperService.scrapePlatform(platform, { id: body.id, pw: body.pw }, userId);
+  scrape(@Param('platform') platform: string, @Body() body: { id: string; pw: string }) {
+    // body.id를 식별자(userId)로 바로 사용
+    return this.scraperService.scrapePlatform(platform, body);
+  }
+
+  @Get('history/:userId')
+  getHistory(@Param('userId') userId: string) {
+    return this.scraperService.getApplyHistory(userId);
   }
 }
