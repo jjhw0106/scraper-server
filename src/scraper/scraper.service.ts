@@ -12,25 +12,25 @@ export class ScraperService {
     @InjectModel(ApplyHistory.name) private applicationModel: Model<ApplyHistory>,
   ) { }
 
-    // 1. 메인 진입점: 스크래핑 실행 후 저장 로직 호출
-    async scrapePlatform(platform: string, credentials?: { id: string; pw: string }) {
-      // userId는 credentials에서 추출 (없으면 'unknown_user')
-      const userId = credentials?.id || 'unknown_user';
-      
-      let browser: Browser | null = null;
-      try {
-        // headless: false -> 브라우저 동작 과정을 눈으로 확인 (디버깅용)
-        browser = await chromium.launch({ headless: false });
-        const page = await browser.newPage();
-  
-        // 1-1. 스크래핑 실행 (각 플랫폼별 로직 수행 및 데이터 반환)
-        const rawData = await this.executeScraping(platform, page, credentials);
-        
-        // 1-2. 데이터 저장 (배열일 경우에만 처리)
-        let savedCount = 0;
-        if (Array.isArray(rawData)) {
-          savedCount = await this.saveScrapedData(userId, platform, rawData);
-        }
+  // 1. 메인 진입점: 스크래핑 실행 후 저장 로직 호출
+  async scrapePlatform(platform: string, credentials?: { id: string; pw: string }) {
+    // userId는 credentials에서 추출 (없으면 'unknown_user')
+    const userId = credentials?.id || 'unknown_user';
+
+    let browser: Browser | null = null;
+    try {
+      // headless: false -> 브라우저 동작 과정을 눈으로 확인 (디버깅용)
+      browser = await chromium.launch({ headless: false });
+      const page = await browser.newPage();
+
+      // 1-1. 스크래핑 실행 (각 플랫폼별 로직 수행 및 데이터 반환)
+      const rawData = await this.executeScraping(platform, page, credentials);
+
+      // 1-2. 데이터 저장 (배열일 경우에만 처리)
+      let savedCount = 0;
+      if (Array.isArray(rawData)) {
+        savedCount = await this.saveScrapedData(userId, platform, rawData);
+      }
       return {
         success: true,
         platform,
@@ -79,13 +79,21 @@ export class ScraperService {
       appliedAt: item.date || item.appliedAt || new Date().toISOString()
     }));
 
-    if (docsToSave.length > 0) {
-      // 추후 중복 방지 로직(upsert) 등을 여기에 추가 가능
-      const result = await this.applicationModel.insertMany(docsToSave);
-      console.log(`[${platform}] Saved ${result.length} items for user: ${userId}`);
-      return result.length;
+    if (docsToSave.length === 0) {
+      console.log(`[${platform}] No data to save for user: ${userId}`);
+      // 기존 데이터는 삭제하고 새로 저장할 데이터가 없으므로 0을 반환
+      await this.applicationModel.deleteMany({ userId, platform });
+      return 0;
     }
-    return 0;
+
+    // 1. 해당 유저/플랫폼의 기존 데이터 전체 삭제
+    console.log(`[${platform}] Deleting existing data for user: ${userId}`);
+    await this.applicationModel.deleteMany({ userId, platform });
+
+    // 2. 새로운 데이터 삽입
+    const result = await this.applicationModel.insertMany(docsToSave);
+    console.log(`[${platform}] Saved ${result.length} new items for user: ${userId}`);
+    return result.length;
   }
 
   // 4. 지원 내역 조회 (Read)
