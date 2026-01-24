@@ -13,9 +13,9 @@ export class ScraperService {
   ) { }
 
   // 1. 메인 진입점: 스크래핑 실행 후 저장 로직 호출
-  async scrapePlatform(platform: string, credentials?: { id: string; pw: string }) {
+  async scrapePlatform(platform: string, credentials: { platformUserId: string; platformUserPw: string; appUserId: string }) {
     // userId는 credentials에서 추출 (없으면 'unknown_user')
-    const userId = credentials?.id || 'unknown_user';
+    const appUserId = credentials?.appUserId || 'unknown_user';
 
     let browser: Browser | null = null;
     try {
@@ -29,7 +29,7 @@ export class ScraperService {
       // 1-2. 데이터 저장 (배열일 경우에만 처리)
       let savedCount = 0;
       if (Array.isArray(rawData)) {
-        savedCount = await this.saveScrapedData(userId, platform, rawData);
+        savedCount = await this.saveScrapedData(appUserId, credentials.platformUserId, platform, rawData);
       }
       return {
         success: true,
@@ -56,7 +56,7 @@ export class ScraperService {
   }
 
   // 2. 플랫폼별 분기 처리 (userId 제거됨 - 순수 스크래핑만 담당)
-  private async executeScraping(platform: string, page: Page, credentials?: { id: string; pw: string }) {
+  private async executeScraping(platform: string, page: Page, credentials?: { platformUserId: string; platformUserPw: string; appUserId: string }) {
     switch (platform) {
       case 'wanted':
         return this.scrapeWanted(page, credentials);
@@ -68,44 +68,39 @@ export class ScraperService {
   }
 
   // 3. 데이터 저장 전용 메서드 (DB Persistence)
-  private async saveScrapedData(userId: string, platform: string, data: any[]) {
+  private async saveScrapedData(appUserId: string, platformUserId: string, platform: string, data: any[]) {
     const docsToSave = data.map(item => ({
-      userId,
+      appUserId,
+      platformUserId, // 스키마의 필드명과 일치
       platform,
       company: item.company,
       position: item.position,
       status: item.status,
-      // 날짜 필드 매핑 (date -> appliedAt)
       appliedAt: item.date || item.appliedAt || new Date().toISOString()
     }));
 
-    if (docsToSave.length === 0) {
-      console.log(`[${platform}] No data to save for user: ${userId}`);
-      // 기존 데이터는 삭제하고 새로 저장할 데이터가 없으므로 0을 반환
-      await this.applicationModel.deleteMany({ userId, platform });
-      return 0;
+    // 해당 유저(appUserId)의 해당 플랫폼 데이터 삭제
+    console.log(`[${platform}] Replacing data for appUser: ${appUserId}`);
+    await this.applicationModel.deleteMany({ appUserId, platform });
+
+    if (docsToSave.length > 0) {
+      const result = await this.applicationModel.insertMany(docsToSave);
+      console.log(`[${platform}] Saved ${result.length} new items for appUser: ${appUserId}`);
+      return result.length;
     }
-
-    // 1. 해당 유저/플랫폼의 기존 데이터 전체 삭제
-    console.log(`[${platform}] Deleting existing data for user: ${userId}`);
-    await this.applicationModel.deleteMany({ userId, platform });
-
-    // 2. 새로운 데이터 삽입
-    const result = await this.applicationModel.insertMany(docsToSave);
-    console.log(`[${platform}] Saved ${result.length} new items for user: ${userId}`);
-    return result.length;
+    return 0;
   }
 
-  // 4. 지원 내역 조회 (Read)
-  async getApplyHistory(userId: string) {
-    return this.applicationModel.find({ userId })
-      .sort({ appliedAt: -1 }) // 최신순 정렬 (내림차순)
+  // 4. 지원 내역 조회 (Read) - appUserId 기준
+  async getApplyHistory(appUserId: string) {
+    return this.applicationModel.find({ appUserId })
+      .sort({ appliedAt: -1 })
       .exec();
   }
 
   // --- 플랫폼별 상세 구현 ---
 
-  private async scrapeWanted(page: Page, credentials?: { id: string; pw: string }) {
+  private async scrapeWanted(page: Page, credentials?: { platformUserId: string; platformUserPw: string; appUserId: string }) {
     console.log('Navigating to Wanted...');
     await page.goto('https://www.wanted.co.kr');
     return {
@@ -114,16 +109,16 @@ export class ScraperService {
     };
   }
 
-  private async scrapeJobKorea(page: Page, credentials?: { id: string; pw: string }) {
+  private async scrapeJobKorea(page: Page, credentials?: { platformUserId: string; platformUserPw: string; appUserId: string }) {
     console.log('Navigating to JobKorea Login Page...');
     // 1. 로그인 페이지 이동
     await page.goto('https://www.jobkorea.co.kr/Login/Login_Tot.asp');
 
-    if (credentials?.id && credentials?.pw) {
+    if (credentials?.platformUserId && credentials?.platformUserPw) {
       // --- 자동 로그인 모드 ---
       console.log('Auto-login mode: Filling credentials...');
-      await page.fill('#M_ID', credentials.id);
-      await page.fill('#M_PWD', credentials.pw);
+      await page.fill('#M_ID', credentials.platformUserId);
+      await page.fill('#M_PWD', credentials.platformUserPw);
 
       console.log('Clicking login button...');
       await page.press('#M_PWD', 'Enter');

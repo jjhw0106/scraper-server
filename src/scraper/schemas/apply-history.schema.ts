@@ -5,8 +5,11 @@ import { HydratedDocument } from "mongoose";
 
 @Schema({ timestamps: true }) // 생성/수정시간(createdAt, updatedAt) 자동 생성
 export class ApplyHistory {
+    @Prop() // 우리 서비스의 유저 ID (추후 required: true로 변경 권장)
+    appUserId: string;
+
     @Prop({ required: true })
-    userId: string; // 사용자 식별자
+    platformUserId: string; // 사용자 식별자 (플랫폼 아이디)
 
     @Prop({ required: true })
     platform: string; // 'jobkorea'

@@ -6,7 +6,7 @@ export class ScraperController {
   constructor(private readonly scraperService: ScraperService) { }
 
   @Post(':platform')
-  scrape(@Param('platform') platform: string, @Body() body: { id: string; pw: string }) {
+  scrape(@Param('platform') platform: string, @Body() body: { platformUserId: string; platformUserPw: string; appUserId: string }) {
     // body.id를 식별자(userId)로 바로 사용
     return this.scraperService.scrapePlatform(platform, body);
   }
