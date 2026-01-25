@@ -1,6 +1,0 @@
-refactor(scraper): appUserId 식별자 적용 및 스키마/로직 개선
-
-- 스키마 수정: `ApplyHistory`에 `appUserId` 필드 추가 및 `userId`를 `platformUserId`로 명확화.
-- 서비스 리팩토링: 모든 DB 작업(저장, 삭제, 조회)의 기준 식별자를 `appUserId`로 통일.
-- 컨트롤러 수정: 스크래핑 요청 시 Body 전체를 서비스로 전달하여 `appUserId` 및 플랫폼 인증 정보를 유연하게 처리하도록 개선.
-- 로직 개선: `saveScrapedData`에서 기존 데이터 삭제 시 `appUserId`와 `platform` 조합으로 정확히 타겟팅하여 중복/유실 방지.
